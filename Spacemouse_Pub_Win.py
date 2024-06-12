@@ -9,6 +9,7 @@ import logging
 import signal
 import threading
 import socket
+import json
 import time
 
 # Configure logging
@@ -54,11 +55,7 @@ def dealdata(data_new, data_rec):
         data_rec[6] = data_new[1] & 0x01
         data_rec[7] = (data_new[1] & 0x02) >> 1
 
-
-
-    kkp = [data_rec[0], data_rec[1], data_rec[2], data_rec[3], data_rec[4], data_rec[5], data_rec[6], data_rec[7]]
-    # Return the processed data
-    return kkp
+    return data_rec
 
 def sigint_handler(signal, frame):
     global run
@@ -72,9 +69,10 @@ def read_task(dev, client_socket):
     def data_handler(data):
         try:
             dev.data = dealdata(data, dev.data)
-            # Send the processed data to the client
-            print("this is data which is send = ",dev.data)
-            client_socket.sendall(str(dev.data).encode('utf-8'))
+            # Serialize the data as JSON
+            json_data = json.dumps(dev.data)
+            # Send the JSON data to the client
+            client_socket.sendall(json_data.encode('utf-8'))
         except Exception as e:
             logging.error(f"Data processing failed: {e}")
         event.set()
@@ -89,12 +87,6 @@ def read_task(dev, client_socket):
 
 if __name__ == '__main__':
     global run
-    global lx
-    global ly
-    global lz
-    global rx
-    global ry
-    global rz
 
     run = True
 
