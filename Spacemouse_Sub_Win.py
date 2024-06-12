@@ -4,7 +4,6 @@
 Created on Sun Jun  2 02:38:10 2024
 @author: kathanpatel sub.py
 """
-
 import socket
 import json
 
@@ -93,7 +92,12 @@ def main():
             if not data:
                 decoded_data = [0] * 8
             else:
-                decoded_data = json.loads(data.decode('utf-8'))
+                try:
+                    decoded_data = json.loads(data.decode('utf-8'))
+                except json.decoder.JSONDecodeError as e:
+                    print("Error decoding JSON:", e)
+                    decoded_data = [0] * 8
+                    continue  # Skip processing if decoding fails
 
             for i in range(6):
                 if decoded_data[i] > 50:
