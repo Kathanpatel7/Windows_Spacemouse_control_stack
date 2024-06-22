@@ -62,7 +62,7 @@ def main():
     current_pose = [0] * 8  # Initialize current_pose array
     final_matrix = [0] * 6
 
-    robot_ip = '192.168.1.200'
+    robot_ip = '192.168.1.201'
     conSuc, robot_sock = connectETController(robot_ip)
     if not conSuc:
         print('Failed to connect to the robot.')
@@ -74,7 +74,7 @@ def main():
     suc, result, id = sendCMD(robot_sock, 'setCurrentCoord', {'coord_mode': 1})
 
     if conSuc:
-        suc, result_pose, id = sendCMD(robot_sock, 'get_tcp_pose', {'coordinate_num': 2, 'tool_num': 4})
+        suc, result_pose, id = sendCMD(robot_sock, 'get_tcp_pose', {'coordinate_num': 0, 'tool_num': 0})
         print(result_pose)
         # current_pose = result_pose
         suc, result, id = sendCMD(robot_sock, 'setSysVarV', {'addr': 1, 'pose': current_pose})
@@ -106,8 +106,9 @@ def main():
                     decoded_data[i] = -1
                 else:
                     decoded_data[i] = 0
+            suc, Saftey, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 440})
             
-            if decoded_data != [0] * 8:
+            if decoded_data != [0] * 8 and Saftey != 0:
                 if decoded_data[6] == 1 and robot_speed > 0 and omega > 0:
                     robot_speed -= 5
                     omega -= 2
@@ -124,6 +125,7 @@ def main():
                     final_matrix[3] = - final_matrix[3]
                     #final_matrix[4] = - final_matrix[4 ]
                     final_matrix[5] = - final_matrix[5]
+                    
                     if len(decoded_data) == 8:
                         print(f'Received: {final_matrix}')
                         suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 50, 'arot': 10, 't': 0.1})
