@@ -6,6 +6,7 @@ Created on Sun Jun  2 02:38:10 2024
 """
 import socket
 import json
+import time
 
 def connectETController(ip, port=8055):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -61,6 +62,7 @@ def main():
     omega = 10
     current_pose = [0] * 8  # Initialize current_pose array
     final_matrix = [0] * 6
+    mode = 0  # Initialize mode
 
     robot_ip = '192.168.1.201'
     conSuc, robot_sock = connectETController(robot_ip)
@@ -86,6 +88,8 @@ def main():
     port = 12345
     client_socket.connect((host, port))
 
+    last_safety_check = time.time()
+
     try:
         while True:
             data = client_socket.recv(1024)
@@ -106,9 +110,20 @@ def main():
                     decoded_data[i] = -1
                 else:
                     decoded_data[i] = 0
-            suc, Saftey, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 440})
+
+            # Perform safety check less frequently (e.g., every 0.5 seconds)
+            if time.time() - last_safety_check > 0.5:
+                suc, Saftey, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 440})
+                last_safety_check = time.time()
             
             if decoded_data != [0] * 8 and Saftey != 0:
+                if decoded_data[6] == 1 and decoded_data[7] == 1:
+                    mode = (mode + 1) % 3  # Cycle through modes 1, 2, 0
+                    if mode == 0:
+                        mode = 3  # Change mode 0 to 3 to cycle through 1, 2, 0
+                    print(f"Switched to mode {mode}")
+
+
                 if decoded_data[6] == 1 and robot_speed > 0 and omega > 0:
                     robot_speed -= 5
                     omega -= 2
@@ -126,6 +141,18 @@ def main():
                     #final_matrix[4] = - final_matrix[4 ]
                     final_matrix[5] = - final_matrix[5]
                     
+                    if mode == 1:
+                        # Only translational axis
+                        final_matrix[3] = 0
+                        final_matrix[4] = 0
+                        final_matrix[5] = 0
+                    elif mode == 2:
+                        # Only rotational axis
+                        final_matrix[0] = 0
+                        final_matrix[1] = 0
+                        final_matrix[2] = 0
+                    # else mode 2: both axes are active
+
                     if len(decoded_data) == 8:
                         print(f'Received: {final_matrix}')
                         suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 50, 'arot': 10, 't': 0.1})
