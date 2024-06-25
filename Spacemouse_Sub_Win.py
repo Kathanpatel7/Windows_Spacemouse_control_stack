@@ -53,6 +53,70 @@ def set_v(data, robot_speed, omega):
     
     return current_pose
 
+def calculate_inverse_kinematics(robot_ip, target_pose):
+    P000 = [0, -90, -90, 90, -90, 0]
+
+    conSuc, sock = connectETController(robot_ip)
+
+    if conSuc:
+        try:
+            suc, result, id = sendCMD(sock, "inverseKinematic", {"targetPose": target_pose, "referencePos": P000})
+            if suc:
+                return result
+            else:
+                print("Inverse kinematics failed for this pose:", result)
+                return None
+
+        except Exception as e:
+            print("Error:", e)
+        finally:
+            disconnectETController(sock)
+    else:
+        print("Connection to the robot failed.")
+        return None
+
+def Orientation_correct(robot_ip):
+    conSuc, sock = connectETController(robot_ip)
+
+    if not conSuc:
+        return None
+
+    
+    suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
+    suc, Current_tcp, id = sendCMD(sock, 'get_tcp_pose', {'coordinate_num': 0, 'tool_num': 0})
+    
+    points = [Current_tcp[0],Current_tcp[1],Current_tcp[2],-1.57,0,0]
+    
+    print("This is the desired point in coordinate system" , points)
+    
+    angle_point = calculate_inverse_kinematics(robot_ip, points)
+
+    print("Moving to point linearly:", angle_point)
+
+    if angle_point is None:
+        print("Error: Target position for linear motion is invalid.")
+        return
+
+    suc, result, id = sendCMD(sock, "moveByLine", {
+        "targetPos": angle_point,
+        "speed_type": 0,
+        "speed": 100,
+        "cond_type": 0,
+        "cond_num": 0,
+        "cond_value": 1})
+
+    if not suc:
+        print("Error in moveByLine:", result)
+        return
+
+    while True:
+        suc, result, id = sendCMD(sock, "getRobotState")
+        if result == 0:
+            break
+
+    
+
+
 def main():
     global robot_speed
     global omega
@@ -64,7 +128,7 @@ def main():
     final_matrix = [0] * 6
     mode = 0  # Initialize mode
 
-    robot_ip = '192.168.1.201'
+    robot_ip = '192.168.1.200'
     conSuc, robot_sock = connectETController(robot_ip)
     if not conSuc:
         print('Failed to connect to the robot.')
@@ -104,23 +168,32 @@ def main():
                     continue  # Skip processing if decoding fails
 
             for i in range(6):
-                if decoded_data[i] > 50:
-                    decoded_data[i] = 1
-                elif decoded_data[i] < -50:
-                    decoded_data[i] = -1
+                if i < 3:
+                    if decoded_data[i] > 100:
+                        decoded_data[i] = 1
+                    elif decoded_data[i] < -100:
+                        decoded_data[i] = -1
+                    else:
+                        decoded_data[i] = 0
                 else:
-                    decoded_data[i] = 0
+                    if decoded_data[i] > 150:
+                        decoded_data[i] = 1
+                    elif decoded_data[i] < -150:
+                        decoded_data[i] = -1
+                    else:
+                        decoded_data[i] = 0
 
+            
             # Perform safety check less frequently (e.g., every 0.5 seconds)
             if time.time() - last_safety_check > 0.5:
                 suc, Saftey, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 440})
                 last_safety_check = time.time()
             
-            if decoded_data != [0] * 8 and Saftey != 0:
+            suc, Saftey_joint, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 528})
+            
+            if decoded_data != [0] * 8 and Saftey != 0 and Saftey_joint == 0 :
                 if decoded_data[6] == 1 and decoded_data[7] == 1:
-                    mode = (mode + 1) % 3  # Cycle through modes 1, 2, 0
-                    if mode == 0:
-                        mode = 3  # Change mode 0 to 3 to cycle through 1, 2, 0
+                    mode = 1  
                     print(f"Switched to mode {mode}")
 
 
@@ -136,29 +209,30 @@ def main():
                     temp = set_v(decoded_data, robot_speed, omega)
                     final_matrix = temp[:6]
                     final_matrix[0] = - final_matrix[0]
+		    
                     final_matrix[2] = - final_matrix[2]
-                    final_matrix[3] = - final_matrix[3]
-                    #final_matrix[4] = - final_matrix[4 ]
-                    final_matrix[5] = - final_matrix[5]
+                    final_matrix[3] =  final_matrix[3]
+                    final_matrix[1] = - final_matrix[1 ]
+                    final_matrix[5] = final_matrix[5]
                     
                     if mode == 1:
                         # Only translational axis
-                        final_matrix[3] = 0
-                        final_matrix[4] = 0
-                        final_matrix[5] = 0
-                    elif mode == 2:
-                        # Only rotational axis
-                        final_matrix[0] = 0
-                        final_matrix[1] = 0
-                        final_matrix[2] = 0
-                    # else mode 2: both axes are active
+                        Orientation_correct(robot_ip)
+                        time.sleep(4)
+                        mode = 0
+                        
+                        
+                        
+
+                    
+                    # else mode 2: both axes are active  
 
                     if len(decoded_data) == 8:
                         print(f'Received: {final_matrix}')
                         suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 50, 'arot': 10, 't': 0.1})
                         print(suc, result, id)
             else:
-                #suc, result, id = sendCMD(robot_sock, "stopl", {"acc": 190})
+                suc, result, id = sendCMD(robot_sock, "stopl", {"acc": 490})
                 decoded_data = [0] * 8
                 
     except KeyboardInterrupt:
