@@ -81,15 +81,16 @@ def Orientation_correct(robot_ip):
     if not conSuc:
         return None
 
-    
     suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
     suc, Current_tcp, id = sendCMD(sock, 'get_tcp_pose', {'coordinate_num': 0, 'tool_num': 0})
     
-    points = [Current_tcp[0],Current_tcp[1],Current_tcp[2],-1.57,0,0]
+    points = [Current_tcp[0], Current_tcp[1], Current_tcp[2], -1.57,0,0]
     
     print("This is the desired point in coordinate system" , points)
     
     angle_point = calculate_inverse_kinematics(robot_ip, points)
+    
+    #angle_point[5] = angle_point[5] - 90
 
     print("Moving to point linearly:", angle_point)
 
@@ -100,9 +101,9 @@ def Orientation_correct(robot_ip):
     suc, result, id = sendCMD(sock, "moveByLine", {
         "targetPos": angle_point,
         "speed_type": 0,
-        "speed": 100,
+        "speed": 200,
         "cond_type": 0,
-        "cond_num": 0,
+        "cond_num": 7,
         "cond_value": 1})
 
     if not suc:
@@ -114,19 +115,18 @@ def Orientation_correct(robot_ip):
         if result == 0:
             break
 
-    
-
-
 def main():
     global robot_speed
     global omega
     global current_pose
+    global correcting_orientation
 
     robot_speed = 10
     omega = 10
     current_pose = [0] * 8  # Initialize current_pose array
     final_matrix = [0] * 6
     mode = 0  # Initialize mode
+    correcting_orientation = False
 
     robot_ip = '192.168.1.200'
     conSuc, robot_sock = connectETController(robot_ip)
@@ -142,10 +142,7 @@ def main():
     if conSuc:
         suc, result_pose, id = sendCMD(robot_sock, 'get_tcp_pose', {'coordinate_num': 0, 'tool_num': 0})
         print(result_pose)
-        # current_pose = result_pose
         suc, result, id = sendCMD(robot_sock, 'setSysVarV', {'addr': 1, 'pose': current_pose})
-
-    # suc, result , id = sendCMD(robot_sock, "run")
 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     host = '127.0.0.1'
@@ -156,6 +153,10 @@ def main():
 
     try:
         while True:
+            if correcting_orientation:
+                time.sleep(0.1)  # Give time for orientation correction
+                continue
+
             data = client_socket.recv(1024)
             if not data:
                 decoded_data = [0] * 8
@@ -183,19 +184,28 @@ def main():
                     else:
                         decoded_data[i] = 0
 
-            
             # Perform safety check less frequently (e.g., every 0.5 seconds)
             if time.time() - last_safety_check > 0.5:
                 suc, Saftey, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 440})
                 last_safety_check = time.time()
-            
+
             suc, Saftey_joint, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 528})
             
-            if decoded_data != [0] * 8 and Saftey != 0 and Saftey_joint == 0 :
-                if decoded_data[6] == 1 and decoded_data[7] == 1:
-                    mode = 1  
-                    print(f"Switched to mode {mode}")
+            if Saftey_joint == 1:
+                suc, result, id = sendCMD(robot_sock, "set_servo_status", {"status": 0})
+                
+            
+            
+            
 
+            if decoded_data != [0] * 8 and Saftey != 0 and Saftey_joint == 0:
+                if decoded_data[6] == 1 and decoded_data[7] == 1 and not correcting_orientation:
+                    mode = 1
+                    correcting_orientation = True  # Set flag before calling orientation correction
+                    print(f"Switched to mode {mode}")
+                    Orientation_correct(robot_ip)
+                    correcting_orientation = False  # Reset flag after correction
+                    mode = 0  # Reset mode after correction
 
                 if decoded_data[6] == 1 and robot_speed > 0 and omega > 0:
                     robot_speed -= 5
@@ -208,33 +218,20 @@ def main():
                 else:
                     temp = set_v(decoded_data, robot_speed, omega)
                     final_matrix = temp[:6]
-                    final_matrix[0] = - final_matrix[0]
-		    
-                    final_matrix[2] = - final_matrix[2]
-                    final_matrix[3] =  final_matrix[3]
-                    final_matrix[1] = - final_matrix[1 ]
+                    final_matrix[0] = -final_matrix[0]
+                    final_matrix[2] = -final_matrix[2]
+                    final_matrix[3] = final_matrix[3]
+                    final_matrix[1] = -final_matrix[1]
                     final_matrix[5] = final_matrix[5]
-                    
-                    if mode == 1:
-                        # Only translational axis
-                        Orientation_correct(robot_ip)
-                        time.sleep(4)
-                        mode = 0
-                        
-                        
-                        
 
-                    
-                    # else mode 2: both axes are active  
-
-                    if len(decoded_data) == 8:
+                    if len(decoded_data) == 8 and not correcting_orientation:
                         print(f'Received: {final_matrix}')
                         suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 50, 'arot': 10, 't': 0.1})
                         print(suc, result, id)
             else:
-                suc, result, id = sendCMD(robot_sock, "stopl", {"acc": 490})
+                suc, result, id = sendCMD(robot_sock, "stopl", {"acc": 690})
                 decoded_data = [0] * 8
-                
+
     except KeyboardInterrupt:
         print('Client stopped.')
     finally:
