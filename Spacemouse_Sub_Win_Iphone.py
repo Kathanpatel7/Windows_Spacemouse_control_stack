@@ -7,6 +7,8 @@ Created on Sun Jun  2 02:38:10 2024
 import socket
 import json
 import time
+import keyboard  # Import the keyboard module
+import threading  # Import threading module
 
 def connectETController(ip, port=8055):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -114,6 +116,63 @@ def Orientation_correct(robot_ip):
         suc, result, id = sendCMD(sock, "getRobotState")
         if result == 0:
             break
+        
+def Parking(robot_ip):
+    conSuc, sock = connectETController(robot_ip)
+
+    if not conSuc:
+        return None
+
+    suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
+    
+    
+    points = [73.119, 911.562, 473.332, -2.53,0,0]
+    
+    print("This is the desired point in coordinate system" , points)
+    
+    angle_point = calculate_inverse_kinematics(robot_ip, points)
+    
+    #angle_point[5] = angle_point[5] - 90
+
+    print("Moving to point linearly:", angle_point)
+
+    if angle_point is None:
+        print("Error: Target position for linear motion is invalid.")
+        return
+
+    suc, result, id = sendCMD(sock, "moveByLine", {
+        "targetPos": angle_point,
+        "speed_type": 0,
+        "speed": 100,
+        "cond_type": 0,
+        "cond_num": 7,
+        "cond_value": 1})
+
+    if not suc:
+        print("Error in moveByLine:", result)
+        return
+
+    while True:
+        suc, result, id = sendCMD(sock, "getRobotState")
+        if result == 0:
+            break
+
+def keypress_handler(robot_ip):
+    global correcting_orientation
+    while True:
+        if keyboard.is_pressed('o') and not correcting_orientation:
+            print("Received 'o' key press")  # Debug print to check for key press
+            correcting_orientation = True
+            Orientation_correct(robot_ip)
+            correcting_orientation = False
+        time.sleep(0.1)  # Small delay to reduce CPU usage
+        
+        if keyboard.is_pressed('h') and not correcting_orientation:
+            print("Received 'o' key press")  # Debug print to check for key press
+            correcting_orientation = True
+            Parking(robot_ip)
+            correcting_orientation = False
+        time.sleep(0.1)  # Small delay to reduce CPU usage
 
 def main():
     global robot_speed
@@ -150,6 +209,11 @@ def main():
     client_socket.connect((host, port))
 
     last_safety_check = time.time()
+
+    # Start the keypress handler thread
+    keypress_thread = threading.Thread(target=keypress_handler, args=(robot_ip,))
+    keypress_thread.daemon = True  # Daemonize thread to ensure it exits when the main program exits
+    keypress_thread.start()
 
     try:
         while True:
@@ -199,14 +263,9 @@ def main():
                 Joint_angles[3] >= 340 or Joint_angles[3] <= -340 or 
                 Joint_angles[4] >= 340 or Joint_angles[4] <= -340):
     
-
                 suc, result, id = sendCMD(robot_sock, "set_servo_status", {"status": 0})
                 kkp = 0
                 
-            
-            
-            
-
             if decoded_data != [0] * 8 and Saftey != 0 and Saftey_joint == 0 and kkp == 1:
                 if decoded_data[6] == 1 and decoded_data[7] == 1 and not correcting_orientation:
                     mode = 1
