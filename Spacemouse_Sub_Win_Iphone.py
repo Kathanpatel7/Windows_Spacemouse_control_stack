@@ -9,6 +9,7 @@ import json
 import time
 import keyboard  # Import the keyboard module
 import threading  # Import threading module
+from collections import deque  # Import deque for efficient storage of joint angles
 
 def connectETController(ip, port=8055):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -116,7 +117,7 @@ def Orientation_correct(robot_ip):
         suc, result, id = sendCMD(sock, "getRobotState")
         if result == 0:
             break
-        
+
 def Parking(robot_ip):
     conSuc, sock = connectETController(robot_ip)
 
@@ -157,7 +158,37 @@ def Parking(robot_ip):
         if result == 0:
             break
 
-def keypress_handler(robot_ip):
+def Waypoint_trcking(robot_ip,joint_angles):
+    conSuc, sock = connectETController(robot_ip)
+
+    if not conSuc:
+        return None
+
+    suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
+    print("Moving to point linearly:", joint_angles)
+    
+    if joint_angles is None:
+        print("Error: Target position for linear motion is invalid.")
+        return
+
+    suc, result, id = sendCMD(sock, "moveByLine", {
+        "targetPos": joint_angles,
+        "speed_type": 0,
+        "speed": 100,
+        "cond_type": 0,
+        "cond_num": 7,
+        "cond_value": 1})
+
+    if not suc:
+        print("Error in moveByLine:", result)
+        return
+
+    while True:
+        suc, result, id = sendCMD(sock, "getRobotState")
+        if result == 0:
+            break
+
+def keypress_handler(robot_ip, joint_angles_deque):
     global correcting_orientation
     while True:
         if keyboard.is_pressed('o') and not correcting_orientation:
@@ -165,13 +196,19 @@ def keypress_handler(robot_ip):
             correcting_orientation = True
             Orientation_correct(robot_ip)
             correcting_orientation = False
-        time.sleep(0.1)  # Small delay to reduce CPU usage
-        
         if keyboard.is_pressed('h') and not correcting_orientation:
-            print("Received 'o' key press")  # Debug print to check for key press
+            print("Received 'h' key press")  # Debug print to check for key press
             correcting_orientation = True
             Parking(robot_ip)
             correcting_orientation = False
+        if keyboard.is_pressed('t') :
+            if len(joint_angles_deque) >= 315:
+                joint_angles_315_cycles_ago, cycle_time = joint_angles_deque[-315]
+                Waypoint_trcking(robot_ip,joint_angles_315_cycles_ago)
+                print("Joint angles 315 cycles ago:", joint_angles_315_cycles_ago)
+                print(f"Time taken for one cycle 315 cycles ago: {cycle_time:.6f} seconds")
+            else:
+                print("Not enough data to provide joint angles from 315 cycles ago.")
         time.sleep(0.1)  # Small delay to reduce CPU usage
 
 def main():
@@ -186,6 +223,7 @@ def main():
     final_matrix = [0] * 6
     mode = 0  # Initialize mode
     correcting_orientation = False
+    joint_angles_deque = deque(maxlen=315)  # Initialize deque with max length of 315
 
     robot_ip = '192.168.1.200'
     conSuc, robot_sock = connectETController(robot_ip)
@@ -211,12 +249,14 @@ def main():
     last_safety_check = time.time()
 
     # Start the keypress handler thread
-    keypress_thread = threading.Thread(target=keypress_handler, args=(robot_ip,))
+    keypress_thread = threading.Thread(target=keypress_handler, args=(robot_ip, joint_angles_deque))
     keypress_thread.daemon = True  # Daemonize thread to ensure it exits when the main program exits
     keypress_thread.start()
 
     try:
         while True:
+            cycle_start_time = time.time()
+
             if correcting_orientation:
                 time.sleep(0.1)  # Give time for orientation correction
                 continue
@@ -254,18 +294,18 @@ def main():
                 last_safety_check = time.time()
 
             suc, Saftey_joint, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 528})
-            suc, Joint_angles , id = sendCMD(robot_sock, "get_joint_pos")
-            
+            suc, Joint_angles, id = sendCMD(robot_sock, "get_joint_pos")
+
             kkp = 1 
-            
+
             if (Saftey_joint == 1 or 
                 Joint_angles[5] >= 340 or Joint_angles[5] <= -340 or 
                 Joint_angles[3] >= 340 or Joint_angles[3] <= -340 or 
                 Joint_angles[4] >= 340 or Joint_angles[4] <= -340):
-    
+
                 suc, result, id = sendCMD(robot_sock, "set_servo_status", {"status": 0})
                 kkp = 0
-                
+
             if decoded_data != [0] * 8 and Saftey != 0 and Saftey_joint == 0 and kkp == 1:
                 if decoded_data[6] == 1 and decoded_data[7] == 1 and not correcting_orientation:
                     mode = 1
@@ -294,9 +334,10 @@ def main():
 
                     if len(decoded_data) == 8 and not correcting_orientation:
                         print(f'Received: {final_matrix}')
-                        suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 50, 'arot': 10, 't': 0.1})
+                        suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 50, 'arot': 10, 't': 0.07})
                         print(suc, result, id)
-                        print("Joint Angles = ",Joint_angles)
+                        print("Joint Angles = ", Joint_angles)
+                        joint_angles_deque.append((list(Joint_angles), time.time() - cycle_start_time))
             else:
                 suc, result, id = sendCMD(robot_sock, "stopl", {"acc": 690})
                 decoded_data = [0] * 8
