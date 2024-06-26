@@ -118,7 +118,7 @@ def Orientation_correct(robot_ip):
         if result == 0:
             break
 
-def Parking(robot_ip):
+def Parking(robot_ip,home_position):
     conSuc, sock = connectETController(robot_ip)
 
     if not conSuc:
@@ -127,13 +127,15 @@ def Parking(robot_ip):
     suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
     
     
-    points = [73.119, 911.562, 473.332, -2.53,0,0]
+    
+    
+    points = home_position
     
     print("This is the desired point in coordinate system" , points)
     
     angle_point = calculate_inverse_kinematics(robot_ip, points)
     
-    angle_point[5] = angle_point[5] - 90
+    angle_point[5] = angle_point[5] 
 
     print("Moving to point linearly:", angle_point)
 
@@ -188,7 +190,7 @@ def Waypoint_trcking(robot_ip,joint_angles):
         if result == 0:
             break
 
-def keypress_handler(robot_ip, joint_angles_deque):
+def keypress_handler(robot_ip, joint_angles_deque,home_position):
     global correcting_orientation
     while True:
         if keyboard.is_pressed('O') and not correcting_orientation:
@@ -199,7 +201,7 @@ def keypress_handler(robot_ip, joint_angles_deque):
         if keyboard.is_pressed('H') and not correcting_orientation:
             print("Received 'h' key press")  # Debug print to check for key press
             correcting_orientation = True
-            Parking(robot_ip)
+            Parking(robot_ip,home_position)
             correcting_orientation = False
         if keyboard.is_pressed('T') :
             if len(joint_angles_deque) >= 315:
@@ -211,14 +213,16 @@ def keypress_handler(robot_ip, joint_angles_deque):
                 print("Not enough data to provide joint angles from 315 cycles ago.")
         time.sleep(0.1)  # Small delay to reduce CPU usage
 
-def main():
+def main(home_position):
     global robot_speed
     global omega
     global current_pose
     global correcting_orientation
+    
 
     robot_speed = 10
     omega = 10
+    #home_position = [0,0,0,0,0,0]
     current_pose = [0] * 8  # Initialize current_pose array
     final_matrix = [0] * 6
     mode = 0  # Initialize mode
@@ -249,7 +253,7 @@ def main():
     last_safety_check = time.time()
 
     # Start the keypress handler thread
-    keypress_thread = threading.Thread(target=keypress_handler, args=(robot_ip, joint_angles_deque))
+    keypress_thread = threading.Thread(target=keypress_handler, args=(robot_ip, joint_angles_deque,home_position))
     keypress_thread.daemon = True  # Daemonize thread to ensure it exits when the main program exits
     keypress_thread.start()
 
@@ -350,5 +354,40 @@ def main():
         client_socket.close()
         disconnectETController(robot_sock)
 
+def set_home():
+    
+    robot_ip = '192.168.1.200'
+    conSuc, sock = connectETController(robot_ip)
+    
+
+    if not conSuc:
+        return None
+
+    suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
+    suc, Current_tcp, id = sendCMD(sock, 'get_tcp_pose', {'coordinate_num': 0, 'tool_num': 0})
+    
+    home_position = Current_tcp
+    
+    input("Press enter after setting it! ")
+    
+    
+
+
+    while True:
+        suc, result, id = sendCMD(sock, "getRobotState")
+        if result == 0:
+            break
+        
+    return home_position
+    
 if __name__ == '__main__':
-    main()
+    # Ask user if they want to set a new home location
+    response = input("Do you want to record a new home location? (y/n): ").lower()
+    
+    if response == 'y':
+        home_position = set_home()
+    else:
+        home_position = [-114.711, 894, 452.332, -2.53, 0, 0]
+    
+    # Continue with the main program
+    main(home_position)
