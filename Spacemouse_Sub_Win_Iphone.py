@@ -101,7 +101,7 @@ def Orientation_correct(robot_ip):
     suc, result, id = sendCMD(sock, "moveByLine", {
         "targetPos": angle_point,
         "speed_type": 0,
-        "speed": 200,
+        "speed": 160,
         "cond_type": 0,
         "cond_num": 7,
         "cond_value": 1})
@@ -177,9 +177,9 @@ def main():
                     else:
                         decoded_data[i] = 0
                 else:
-                    if decoded_data[i] > 150:
+                    if decoded_data[i] > 130:
                         decoded_data[i] = 1
-                    elif decoded_data[i] < -150:
+                    elif decoded_data[i] < -130:
                         decoded_data[i] = -1
                     else:
                         decoded_data[i] = 0
@@ -190,15 +190,24 @@ def main():
                 last_safety_check = time.time()
 
             suc, Saftey_joint, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 528})
+            suc, Joint_angles , id = sendCMD(robot_sock, "get_joint_pos")
             
-            if Saftey_joint == 1:
+            kkp = 1 
+            
+            if (Saftey_joint == 1 or 
+                Joint_angles[5] >= 340 or Joint_angles[5] <= -340 or 
+                Joint_angles[3] >= 340 or Joint_angles[3] <= -340 or 
+                Joint_angles[4] >= 340 or Joint_angles[4] <= -340):
+    
+
                 suc, result, id = sendCMD(robot_sock, "set_servo_status", {"status": 0})
+                kkp = 0
                 
             
             
             
 
-            if decoded_data != [0] * 8 and Saftey != 0 and Saftey_joint == 0:
+            if decoded_data != [0] * 8 and Saftey != 0 and Saftey_joint == 0 and kkp == 1:
                 if decoded_data[6] == 1 and decoded_data[7] == 1 and not correcting_orientation:
                     mode = 1
                     correcting_orientation = True  # Set flag before calling orientation correction
@@ -207,7 +216,7 @@ def main():
                     correcting_orientation = False  # Reset flag after correction
                     mode = 0  # Reset mode after correction
 
-                if decoded_data[6] == 1 and robot_speed > 0 and omega > 0:
+                if decoded_data[6] == 1 and robot_speed > 5 and omega > 2:
                     robot_speed -= 5
                     omega -= 2
                     print('Speed Decreased to:', robot_speed)
@@ -228,6 +237,7 @@ def main():
                         print(f'Received: {final_matrix}')
                         suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 50, 'arot': 10, 't': 0.1})
                         print(suc, result, id)
+                        print("Joint Angles = ",Joint_angles)
             else:
                 suc, result, id = sendCMD(robot_sock, "stopl", {"acc": 690})
                 decoded_data = [0] * 8
