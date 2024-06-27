@@ -10,6 +10,7 @@ import time
 import keyboard  # Import the keyboard module
 import threading  # Import threading module
 from collections import deque  # Import deque for efficient storage of joint angles
+from openpyxl import Workbook, load_workbook
 
 waypoints = {}  # Initialize waypoints dictionary globally
 correcting_orientation = False
@@ -124,6 +125,42 @@ def Orientation_correct(robot_ip):
         if result == 0:
             break
 
+
+def wrist3_calibate(robot_ip):
+    conSuc, sock = connectETController(robot_ip)
+
+    if not conSuc:
+        return None
+
+    suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
+    suc, Joint_angles, id = sendCMD(sock, "get_joint_pos")
+    Joint_angles[5] = 0
+
+    print("Moving to point linearly:", Joint_angles)
+
+    if Joint_angles is None:
+        print("Error: Target position for linear motion is invalid.")
+        return
+
+    suc, result, id = sendCMD(sock, "moveByJoint", {
+        "targetPos": Joint_angles,
+        "speed": 30,
+        "acc":10,
+        "dec":10,
+        "cond_type": 0,
+        "cond_num": 7,
+        "cond_value": 1})
+
+    if not suc:
+        print("Error in moveByLine:", result)
+        return
+
+
+    while True:
+        suc, result, id = sendCMD(sock, "getRobotState")
+        if result == 0:
+            break
+
 def Parking(robot_ip):
     conSuc, sock = connectETController(robot_ip)
 
@@ -133,7 +170,7 @@ def Parking(robot_ip):
     suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
     
     
-    points = [73.119, 911.562, 473.332, -2.53,0,0]
+    points = [73.119, 700.562, 265.332, -2.53,0,0]
     
     #print("This is the desired point in coordinate system" , points)
     
@@ -210,8 +247,89 @@ def homing(robot_ip):
         suc, result, id = sendCMD(sock, "getRobotState")
         if result == 0:
             break
+        
+def get_waypoint_from_excel(excel_file, waypoint_key):
+    try:
+        wb = load_workbook(excel_file)
+        ws = wb.active
+    except FileNotFoundError:
+        print(f"Excel file '{excel_file}' not found.")
+        return None
+    
+    for row in ws.iter_rows(min_row=2, max_col=7):  # Adjust the range to include the necessary columns
+        if row[0].value == waypoint_key:
+            coordinates = [
+                row[1].value,  # X
+                row[2].value,  # Y
+                row[3].value,  # Z
+                row[4].value,  # RX
+                row[5].value,  # RY
+                row[6].value   # RZ
+            ]
+            return coordinates
+    
+    return None
+
+
+def save_waypoint_to_excel(excel_file, waypoint_key, coordinates):
+    try:
+        wb = load_workbook(excel_file)
+        ws = wb.active
+    except FileNotFoundError:
+        wb = Workbook()
+        ws = wb.active
+        ws.append(['Waypoint Key', 'X', 'Y', 'Z', 'RX', 'RY', 'RZ'])
+
+    found = False
+    for row in ws.iter_rows(min_row=2, min_col=1, max_col=1, values_only=True):
+        if row[0] == waypoint_key:
+            ws.cell(row=row[0], column=2).value = coordinates[0]  # X
+            ws.cell(row=row[0], column=3).value = coordinates[1]  # Y
+            ws.cell(row=row[0], column=4).value = coordinates[2]  # Z
+            ws.cell(row=row[0], column=5).value = coordinates[3]  # RX
+            ws.cell(row=row[0], column=6).value = coordinates[4]  # RY
+            ws.cell(row=row[0], column=7).value = coordinates[5]  # RZ
+            found = True
+            break
+    
+    if not found:
+        ws.append([waypoint_key] + coordinates)
+    
+    wb.save(excel_file)
+    print(f"Waypoint {waypoint_key} saved to {excel_file}")
+
+def initialize_excel_file(excel_file):
+    """Initializes the Excel file by creating it with the necessary headers."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(['Waypoint Key', 'X', 'Y', 'Z', 'RX', 'RY', 'RZ'])  # Add headers
+    wb.save(excel_file)
+    print(f"Excel file '{excel_file}' initialized.")
+    
+def delete_waypoint_from_excel(waypoint_key):
+    excel_file = r"C:\Users\X'ian\Downloads\Windows_Spacemouse_control_stack-main\waypoints.xlsx"
+    try:
+        wb = load_workbook(excel_file)
+        ws = wb.active
+    except FileNotFoundError:
+        print(f"Excel file '{excel_file}' not found.")
+        return
+    
+    found = False
+    for row in ws.iter_rows(min_row=2, min_col=1, max_col=1, values_only=True):
+        if row[0] == waypoint_key:
+            ws.delete_rows(row[0] + 1)  # Delete the entire row starting from the found waypoint key
+            found = True
+            break
+    
+    if not found:
+        print(f"Waypoint {waypoint_key} not found in {excel_file}.")
+    else:
+        wb.save(excel_file)
+        print(f"Waypoint {waypoint_key} deleted from {excel_file}")
+
+    
 def waypoint(robot_ip, waypoint_key):
-    global waypoints
     global correcting_orientation
     
     conSuc, sock = connectETController(robot_ip)
@@ -222,16 +340,19 @@ def waypoint(robot_ip, waypoint_key):
     suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
     suc, Current_tcp, id = sendCMD(sock, 'get_tcp_pose', {'coordinate_num': 0, 'tool_num': 0})
     
-    if waypoint_key not in waypoints or not waypoints[waypoint_key]['saved']:
-        waypoints[waypoint_key] = {
-            'coordinates': Current_tcp,
-            'saved': True
-        }
-        print(f"Saved new waypoint {waypoint_key} location!!!")
-     
-    #print(f"This is the desired point in coordinate system for waypoint {waypoint_key}", waypoints[waypoint_key]['coordinates'])
+    excel_file = r"C:\Users\X'ian\Downloads\Windows_Spacemouse_control_stack-main\waypoints.xlsx"
+    coordinates = get_waypoint_from_excel(excel_file, waypoint_key)
     
-    angle_point = calculate_inverse_kinematics(robot_ip, waypoints[waypoint_key]['coordinates'])
+    if coordinates is None:
+        # Waypoint not found in Excel, add it
+        coordinates = Current_tcp
+        save_waypoint_to_excel(excel_file, waypoint_key, coordinates)
+        print(f"Saved new waypoint {waypoint_key} location!!!")
+    else:
+        print(f"Found waypoint {waypoint_key} in Excel. Moving to coordinates.")
+
+    # Now coordinates should have the correct waypoint coordinates
+    angle_point = calculate_inverse_kinematics(robot_ip, coordinates)
 
     print("Moving to point linearly:", angle_point)
 
@@ -255,6 +376,7 @@ def waypoint(robot_ip, waypoint_key):
         suc, result, id = sendCMD(sock, "getRobotState")
         if result == 0:
             break
+
 def Waypoint_trcking(robot_ip,joint_angles):
     conSuc, sock = connectETController(robot_ip)
 
@@ -339,7 +461,12 @@ def keypress_handler(robot_ip, joint_angles_deque):
             Orientation_correct(robot_ip)
             print("Orientation corrected!")
             correcting_orientation = False
-
+        if keyboard.is_pressed('C') and not correcting_orientation:
+            print("Received 'c' key press")  # Debug print to check for key press
+            correcting_orientation = True
+            wrist3_calibate(robot_ip)
+            print("Orientation corrected!")
+            correcting_orientation = False
         if keyboard.is_pressed('P') and not correcting_orientation:
             print("Received 'p' key press")  # Debug print to check for key press
             correcting_orientation = True
@@ -362,6 +489,15 @@ def keypress_handler(robot_ip, joint_angles_deque):
             else:
                 print("Not enough data to provide joint angles from 315 cycles ago.")
             correcting_orientation = False
+        if keyboard.is_pressed('r') :
+            waypoint_key = input("Enter the waypoint key to delete (1-9): ")
+            if waypoint_key.isdigit() and int(waypoint_key) in range(1, 10):
+                delete_waypoint_from_excel(int(waypoint_key))
+            else:
+                print("Invalid input. Please enter a number from 1 to 9.")
+        if keyboard.is_pressed('a'):
+            excel_file = r"C:\Users\X'ian\Downloads\Windows_Spacemouse_control_stack-main\waypoints.xlsx"  # Replace with your user directory
+            initialize_excel_file(excel_file)
         time.sleep(0.1)  # Small delay to reduce CPU usage
 
 def main():
