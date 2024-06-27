@@ -11,6 +11,11 @@ import keyboard  # Import the keyboard module
 import threading  # Import threading module
 from collections import deque  # Import deque for efficient storage of joint angles
 
+waypoints = {}  # Initialize waypoints dictionary globally
+correcting_orientation = False
+first_home = False
+
+
 def connectETController(ip, port=8055):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -89,7 +94,7 @@ def Orientation_correct(robot_ip):
     
     points = [Current_tcp[0], Current_tcp[1], Current_tcp[2], -1.57,0,0]
     
-    print("This is the desired point in coordinate system" , points)
+    #print("This is the desired point in coordinate system" , points)
     
     angle_point = calculate_inverse_kinematics(robot_ip, points)
     
@@ -113,6 +118,7 @@ def Orientation_correct(robot_ip):
         print("Error in moveByLine:", result)
         return
 
+
     while True:
         suc, result, id = sendCMD(sock, "getRobotState")
         if result == 0:
@@ -129,7 +135,7 @@ def Parking(robot_ip):
     
     points = [73.119, 911.562, 473.332, -2.53,0,0]
     
-    print("This is the desired point in coordinate system" , points)
+    #print("This is the desired point in coordinate system" , points)
     
     angle_point = calculate_inverse_kinematics(robot_ip, points)
     
@@ -153,11 +159,11 @@ def Parking(robot_ip):
         print("Error in moveByLine:", result)
         return
 
+
     while True:
         suc, result, id = sendCMD(sock, "getRobotState")
         if result == 0:
             break
-
 def homing(robot_ip):
     global first_home
     global homing_coord
@@ -176,9 +182,56 @@ def homing(robot_ip):
         first_home = True
         print("Saved new home location!!!")
      
-    print("This is the desired point in coordinate system", homing_coord)
+    #print("This is the desired point in coordinate system", homing_coord)
     
     angle_point = calculate_inverse_kinematics(robot_ip, homing_coord)
+
+    print("Moving to point linearly:", angle_point)
+
+    if angle_point is None:
+        print("Error: Target position for linear motion is invalid.")
+        return
+
+    suc, result, id = sendCMD(sock, "moveByLine", {
+        "targetPos": angle_point,
+        "speed_type": 0,
+        "speed": 100,
+        "cond_type": 0,
+        "cond_num": 7,
+        "cond_value": 1})
+
+    if not suc:
+        print("Error in moveByLine:", result)
+        return
+    
+    
+
+    while True:
+        suc, result, id = sendCMD(sock, "getRobotState")
+        if result == 0:
+            break
+def waypoint(robot_ip, waypoint_key):
+    global waypoints
+    global correcting_orientation
+    
+    conSuc, sock = connectETController(robot_ip)
+
+    if not conSuc:
+        return None
+
+    suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
+    suc, Current_tcp, id = sendCMD(sock, 'get_tcp_pose', {'coordinate_num': 0, 'tool_num': 0})
+    
+    if waypoint_key not in waypoints or not waypoints[waypoint_key]['saved']:
+        waypoints[waypoint_key] = {
+            'coordinates': Current_tcp,
+            'saved': True
+        }
+        print(f"Saved new waypoint {waypoint_key} location!!!")
+     
+    #print(f"This is the desired point in coordinate system for waypoint {waypoint_key}", waypoints[waypoint_key]['coordinates'])
+    
+    angle_point = calculate_inverse_kinematics(robot_ip, waypoints[waypoint_key]['coordinates'])
 
     print("Moving to point linearly:", angle_point)
 
@@ -202,7 +255,6 @@ def homing(robot_ip):
         suc, result, id = sendCMD(sock, "getRobotState")
         if result == 0:
             break
-
 def Waypoint_trcking(robot_ip,joint_angles):
     conSuc, sock = connectETController(robot_ip)
 
@@ -236,22 +288,72 @@ def Waypoint_trcking(robot_ip,joint_angles):
 def keypress_handler(robot_ip, joint_angles_deque):
     global correcting_orientation
     while True:
+        if keyboard.is_pressed('1') and not correcting_orientation:
+            correcting_orientation = True
+            waypoint(robot_ip, 1)
+            print("Reached waypoint 1")
+            correcting_orientation = False
+        elif keyboard.is_pressed('2'):
+            correcting_orientation = True
+            waypoint(robot_ip, 2)
+            print("Reached waypoint 2")
+            correcting_orientation = False
+        elif keyboard.is_pressed('3'):
+            correcting_orientation = True
+            waypoint(robot_ip, 3)
+            print("Reached waypoint 3")
+            correcting_orientation = False
+        elif keyboard.is_pressed('4'):
+            correcting_orientation = True
+            waypoint(robot_ip, 4)
+            print("Reached waypoint 4")
+            correcting_orientation = False
+        elif keyboard.is_pressed('5'):
+            correcting_orientation = True
+            waypoint(robot_ip, 5)
+            print("Reached waypoint 5")
+            correcting_orientation = False
+        elif keyboard.is_pressed('6'):
+            correcting_orientation = True
+            waypoint(robot_ip, 6)
+            print("Reached waypoint 6")
+            correcting_orientation = False
+        elif keyboard.is_pressed('7'):
+            correcting_orientation = True
+            waypoint(robot_ip, 7)
+            print("Reached waypoint 7")
+            correcting_orientation = False
+        elif keyboard.is_pressed('8'):
+            correcting_orientation = True
+            waypoint(robot_ip, 8)
+            print("Reached waypoint 8")
+            correcting_orientation = False
+        elif keyboard.is_pressed('9'):
+            correcting_orientation = True
+            waypoint(robot_ip, 9)
+            print("Reached waypoint 9")
+            correcting_orientation = False
         if keyboard.is_pressed('O') and not correcting_orientation:
             print("Received 'o' key press")  # Debug print to check for key press
             correcting_orientation = True
             Orientation_correct(robot_ip)
+            print("Orientation corrected!")
             correcting_orientation = False
+
         if keyboard.is_pressed('P') and not correcting_orientation:
             print("Received 'p' key press")  # Debug print to check for key press
             correcting_orientation = True
             Parking(robot_ip)
+            print("Reached Parking pose!")
             correcting_orientation = False
         if keyboard.is_pressed('H') and not correcting_orientation:
             print("Received 'h' key press")  # Debug print to check for key press
             correcting_orientation = True
             homing(robot_ip)
+            print("Reached Home!")
             correcting_orientation = False
         if keyboard.is_pressed('T') :
+            correcting_orientation = True
             if len(joint_angles_deque) >= 315:
                 joint_angles_315_cycles_ago, cycle_time = joint_angles_deque[-315]
                 Waypoint_trcking(robot_ip,joint_angles_315_cycles_ago)
@@ -259,6 +361,7 @@ def keypress_handler(robot_ip, joint_angles_deque):
                 print(f"Time taken for one cycle 315 cycles ago: {cycle_time:.6f} seconds")
             else:
                 print("Not enough data to provide joint angles from 315 cycles ago.")
+            correcting_orientation = False
         time.sleep(0.1)  # Small delay to reduce CPU usage
 
 def main():
@@ -267,7 +370,12 @@ def main():
     global current_pose
     global correcting_orientation
     global first_home
+    global waypoints
+    
+    waypoints = {}
     first_home = False
+    
+    
     robot_speed = 10
     omega = 10
     current_pose = [0] * 8  # Initialize current_pose array
@@ -391,7 +499,7 @@ def main():
                         print(f'Received: {final_matrix}')
                         suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 50, 'arot': 10, 't': 0.07})
                         print(suc, result, id)
-                        print("Joint Angles = ", Joint_angles)
+                        #print("Joint Angles = ", Joint_angles)
                         joint_angles_deque.append((list(Joint_angles), time.time() - cycle_start_time))
             else:
                 suc, result, id = sendCMD(robot_sock, "stopl", {"acc": 690})
