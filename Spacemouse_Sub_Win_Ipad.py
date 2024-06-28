@@ -170,7 +170,7 @@ def Parking(robot_ip):
     suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
     
     
-    points = [73.119, 700.562, 265.332, -2.53,0,0]
+    points = [217, 548, 71, -2.14,0,0]
     
     #print("This is the desired point in coordinate system" , points)
     
@@ -316,9 +316,9 @@ def delete_waypoint_from_excel(waypoint_key):
         return
     
     found = False
-    for row in ws.iter_rows(min_row=2, min_col=1, max_col=1, values_only=True):
-        if row[0] == waypoint_key:
-            ws.delete_rows(row[0] + 1)  # Delete the entire row starting from the found waypoint key
+    for row in range(2, ws.max_row + 1):
+        if ws.cell(row=row, column=1).value == waypoint_key:
+            ws.delete_rows(row)
             found = True
             break
     
