@@ -582,14 +582,13 @@ def main():
                         decoded_data[i] = -1
                     else:
                         decoded_data[i] = 0
-            Safteyy = 1
+            #Safteyy = 1
 
             # Perform safety check less frequently (e.g., every 0.5 seconds)
-            if time.time() - last_safety_check > 0.5:
+            if time.time() - last_safety_check > 0.1:
                 suc, Safteyy, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 440})
-                
                 last_safety_check = time.time()
-            Saftey = Safteyy
+       
             suc, Saftey_joint, id = sendCMD(robot_sock, 'getVirtualOutput', {'addr': 528})
             suc, Joint_angles, id = sendCMD(robot_sock, "get_joint_pos")
 
@@ -602,8 +601,10 @@ def main():
 
                 suc, result, id = sendCMD(robot_sock, "set_servo_status", {"status": 0})
                 kkp = 0
-
-            if decoded_data != [0] * 8 and Saftey != 0 and Saftey_joint == 0 and kkp == 1:
+            if Safteyy == 0:
+                print("Robot out of the safe zone!!! Please take it back to safe zone")
+            #print("Safteyy = ",Safteyy)
+            if decoded_data != [0] * 8 and Safteyy != 0 and Saftey_joint == 0 and kkp == 1:
                 if decoded_data[6] == 1 and decoded_data[7] == 1 and not correcting_orientation:
                     mode = 1
                     correcting_orientation = True  # Set flag before calling orientation correction
@@ -648,4 +649,4 @@ def main():
         disconnectETController(robot_sock)
 
 if __name__ == '__main__':
-    main()
+     main()
