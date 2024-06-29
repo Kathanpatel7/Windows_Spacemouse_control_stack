@@ -457,30 +457,30 @@ def keypress_handler(robot_ip, joint_angles_deque):
             print("Reached waypoint 9")
             correcting_orientation = False
         if keyboard.is_pressed('O') and not correcting_orientation:
-            print("Received 'o' key press")  # Debug print to check for key press
+            print("Received 'o' key press")  # Press O to recalibrate joints to an right orientation, Watch out for any possible collision
             correcting_orientation = True
             Orientation_correct(robot_ip)
             print("Orientation corrected!")
             correcting_orientation = False
         if keyboard.is_pressed('C') and not correcting_orientation:
-            print("Received 'c' key press")  # Debug print to check for key press
-            correcting_orientation = True
+            print("Received 'c' key press")  # Press C to recalibrate joint 6 to 0 degree , Watch out for any possible collision
+            correcting_orientation = True   
             wrist3_calibate(robot_ip)
             print("Orientation corrected!")
             correcting_orientation = False
         if keyboard.is_pressed('P') and not correcting_orientation:
-            print("Received 'p' key press")  # Debug print to check for key press
+            print("Received 'p' key press")  # Press P to make robot park to safe place
             correcting_orientation = True
             Parking(robot_ip)
             print("Reached Parking pose!")
             correcting_orientation = False
         if keyboard.is_pressed('H') and not correcting_orientation:
-            print("Received 'h' key press")  # Debug print to check for key press
+            print("Received 'h' key press")  # Press H to take robot to user define Patient home
             correcting_orientation = True
             homing(robot_ip)
             print("Reached Home!")
             correcting_orientation = False
-        if keyboard.is_pressed('T') :
+        if keyboard.is_pressed('T') :    # Press 'T' to undo robot motion to 5 seconds before.
             correcting_orientation = True
             if len(joint_angles_deque) >= 315:
                 joint_angles_315_cycles_ago, cycle_time = joint_angles_deque[-315]
@@ -491,19 +491,21 @@ def keypress_handler(robot_ip, joint_angles_deque):
                 print("Not enough data to provide joint angles from 315 cycles ago.")
             correcting_orientation = False
         if keyboard.is_pressed('r'):
-            waypoint_key = input("Enter the waypoint key to delete (1-9) or press 'a': ")
+            waypoint_key = input("Enter the waypoint key to delete (1-9), press 'a' to delete all waypoints, or press 'h' to delete patient home: ")
             if waypoint_key.isdigit() and int(waypoint_key) in range(1, 10):
                 delete_waypoint_from_excel(int(waypoint_key))
             elif waypoint_key.lower() == 'a':
                 #print("You have pressed the 'a' key after pressing 'r'.")
                 excel_file = r"C:\Users\X'ian\Downloads\Windows_Spacemouse_control_stack-main\waypoints.xlsx"  # Replace with your user directory
                 initialize_excel_file(excel_file)
+                print("All waypoints deleted !")
                 # Add any additional actions you want to perform when 'a' is pressed
             elif waypoint_key.lower() == 'h':
                 first_home = False
+                print("Paitent Home waypoints deleted !")
                 
             else:
-                print("Invalid input. Please enter a number from 1 to 9 or press 'a'.")
+                print("Invalid input. Please enter a number from 1 to 9 or press 'a' or 'h'")
 
         time.sleep(0.1)  # Small delay to reduce CPU usage
 
@@ -571,6 +573,7 @@ def main():
                     decoded_data = json.loads(data.decode('utf-8'))
                 except json.decoder.JSONDecodeError as e:
                     print("Error decoding JSON:", e)
+                    print("Push or Pull space mouse a bit harder!!!")
                     decoded_data = [0] * 8
                     continue  # Skip processing if decoding fails
 
@@ -641,7 +644,7 @@ def main():
 
                     if len(decoded_data) == 8 and not correcting_orientation:
                         print(f'Received: {final_matrix}')
-                        suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 50, 'arot': 10, 't': 0.07})
+                        suc, result, id = sendCMD(robot_sock, 'moveBySpeedl', {'v': final_matrix, 'acc': 40, 'arot': 10, 't': 0.07})
                         print(suc, result, id)
                         #print("Joint Angles = ", Joint_angles)
                         joint_angles_deque.append((list(Joint_angles), time.time() - cycle_start_time))
