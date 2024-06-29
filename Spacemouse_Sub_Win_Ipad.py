@@ -170,7 +170,7 @@ def Parking(robot_ip):
     suc, result, id = sendCMD(sock, "set_servo_status", {"status": 1})
     
     
-    points = [217, 548, 71, -2.14,0,0]
+    points = [217, 648, 71, -2.14,0,0]
     
     #print("This is the desired point in coordinate system" , points)
     
@@ -331,7 +331,6 @@ def delete_waypoint_from_excel(waypoint_key):
     
 def waypoint(robot_ip, waypoint_key):
     global correcting_orientation
-    
     conSuc, sock = connectETController(robot_ip)
 
     if not conSuc:
@@ -363,7 +362,7 @@ def waypoint(robot_ip, waypoint_key):
     suc, result, id = sendCMD(sock, "moveByLine", {
         "targetPos": angle_point,
         "speed_type": 0,
-        "speed": 100,
+        "speed": 70,
         "cond_type": 0,
         "cond_num": 7,
         "cond_value": 1})
@@ -409,6 +408,8 @@ def Waypoint_trcking(robot_ip,joint_angles):
 
 def keypress_handler(robot_ip, joint_angles_deque):
     global correcting_orientation
+    global first_home
+    
     while True:
         if keyboard.is_pressed('1') and not correcting_orientation:
             correcting_orientation = True
@@ -489,15 +490,21 @@ def keypress_handler(robot_ip, joint_angles_deque):
             else:
                 print("Not enough data to provide joint angles from 315 cycles ago.")
             correcting_orientation = False
-        if keyboard.is_pressed('r') :
-            waypoint_key = input("Enter the waypoint key to delete (1-9): ")
+        if keyboard.is_pressed('r'):
+            waypoint_key = input("Enter the waypoint key to delete (1-9) or press 'a': ")
             if waypoint_key.isdigit() and int(waypoint_key) in range(1, 10):
                 delete_waypoint_from_excel(int(waypoint_key))
+            elif waypoint_key.lower() == 'a':
+                #print("You have pressed the 'a' key after pressing 'r'.")
+                excel_file = r"C:\Users\X'ian\Downloads\Windows_Spacemouse_control_stack-main\waypoints.xlsx"  # Replace with your user directory
+                initialize_excel_file(excel_file)
+                # Add any additional actions you want to perform when 'a' is pressed
+            elif waypoint_key.lower() == 'h':
+                first_home = False
+                
             else:
-                print("Invalid input. Please enter a number from 1 to 9.")
-        if keyboard.is_pressed('a'):
-            excel_file = r"C:\Users\X'ian\Downloads\Windows_Spacemouse_control_stack-main\waypoints.xlsx"  # Replace with your user directory
-            initialize_excel_file(excel_file)
+                print("Invalid input. Please enter a number from 1 to 9 or press 'a'.")
+
         time.sleep(0.1)  # Small delay to reduce CPU usage
 
 def main():
